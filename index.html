@@ -24,13 +24,15 @@
         // Quote validity
         quoteValidDays: 30,  // Quote expires after 30 days
         
-        // Rates (Updated March 2026 +0.25%)
-        rateSmall: 10.50,    // $0 - $19,999
-        rateMid: 8.20,       // $20,000 - $49,999
-        rateCore: 7.75,      // $50,000 - $100,000
+        // Rates (Updated per Medical Vertical Pricing Reference, July 2026)
+        // Based on established-practice CoF of 5.90%, plus target spread band by deal size
+        rateSmall: 10.30,    // $0 - $24,999 (spread 4.4%)
+        rateMid: 9.60,       // $25,000 - $49,999 (spread 3.70% - matches Daniel's actual average vet-deal spread at 5.9% CoF)
+        rateCore: 9.25,      // $50,000 - $74,999 (spread 3.35%)
+        rateLarge: 8.95,     // $75,000+ (spread 3.05%)
         
-        docFee: 175,
-        purchaseOption: 250      // Lease buyout / residual at end of term
+        docFee: 298,
+        purchaseOption: 100      // Lease buyout / residual at end of term - matches medical vertical standard
     };
     // ========== END SETTINGS ==========
     
@@ -209,14 +211,15 @@
     }
     
     function getRate(amount) {
-        if (amount < 20000) return SETTINGS.rateSmall;
+        if (amount < 25000) return SETTINGS.rateSmall;
         if (amount < 50000) return SETTINGS.rateMid;
-        return SETTINGS.rateCore;
+        if (amount < 75000) return SETTINGS.rateCore;
+        return SETTINGS.rateLarge;
     }
     
     function calculateMonthlyPayment(principal, annualRate, months) {
         const monthlyRate = annualRate / 100 / 12;
-        const fv = SETTINGS.purchaseOption; // $250 residual / lease buyout
+        const fv = SETTINGS.purchaseOption; // SETTINGS.purchaseOption residual / lease buyout
         // Standard lease payment formula with residual (future value)
         const pvFactor = Math.pow(1 + monthlyRate, months);
         return (monthlyRate * (principal - fv / pvFactor)) / (1 - 1 / pvFactor);
@@ -228,7 +231,7 @@
         const reducedPrincipal = principal - 100; // 2 × $50 touch payments
         const accruedPrincipal = reducedPrincipal * Math.pow(1 + monthlyRate, 2);
         const regularPaymentMonths = months - 2;
-        const fv = SETTINGS.purchaseOption; // $250 residual / lease buyout
+        const fv = SETTINGS.purchaseOption; // SETTINGS.purchaseOption residual / lease buyout
         // Lease payment formula with residual applied to accrued principal
         const pvFactor = Math.pow(1 + monthlyRate, regularPaymentMonths);
         const regularPayment = (monthlyRate * (accruedPrincipal - fv / pvFactor)) / (1 - 1 / pvFactor);
@@ -245,7 +248,7 @@
         const reducedPrincipal = principal - 150; // 3 × $50 touch payments
         const accruedPrincipal = reducedPrincipal * Math.pow(1 + monthlyRate, 3);
         const regularPaymentMonths = months - 3;
-        const fv = SETTINGS.purchaseOption; // $250 residual / lease buyout
+        const fv = SETTINGS.purchaseOption; // SETTINGS.purchaseOption residual / lease buyout
         // Lease payment formula with residual applied to accrued principal
         const pvFactor = Math.pow(1 + monthlyRate, regularPaymentMonths);
         const regularPayment = (monthlyRate * (accruedPrincipal - fv / pvFactor)) / (1 - 1 / pvFactor);
@@ -634,7 +637,7 @@
     function displayQuote() {
         const { equipmentCost, hasWarranty, warrantyCost, selectedTerms, paymentSchedule } = quoteData;
         const totalEquipmentCost = equipmentCost + (hasWarranty ? warrantyCost : 0);
-        const totalFinanced = totalEquipmentCost + SETTINGS.docFee;
+        const totalFinanced = totalEquipmentCost + SETTINGS.docFee; // Doc fee is rolled into the financed amount at Sonoma
         const rate = getRate(totalFinanced);
         
         let html = `
@@ -858,7 +861,7 @@ ${repEmail}`;
         yPos += 12;
         
         // Payment table
-        const totalFinanced = quoteData.equipmentCost + (quoteData.warrantyCost || 0) + SETTINGS.docFee;
+        const totalFinanced = quoteData.equipmentCost + (quoteData.warrantyCost || 0) + SETTINGS.docFee; // Doc fee is rolled into the financed amount at Sonoma
         const rate = getRate(totalFinanced);
         
         pdf.setFontSize(14);
