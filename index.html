@@ -24,18 +24,23 @@
         // Quote validity
         quoteValidDays: 30,  // Quote expires after 30 days
         
-        // Rates (Updated per Medical Vertical Pricing Reference, July 2026)
-        // Based on established-practice CoF of 5.90%, plus target spread band by deal size
-        rateTier1: 10.75,    // Under $10,000
-        rateTier2: 9.75,     // $10,001 - $20,000
-        rateTier3: 9.00,     // $20,001 - $30,000
-        rateTier4: 8.75,     // $30,001 - $50,000
-        rateTier5: 8.50,     // $50,001 - $100,000
-        rateTier6: 8.00,     // $100,001 - $200,000
-        rateTier7: 7.75,     // $200,001 - $300,000
-        rateTier8: 7.50,     // $300,001+
+        // Rates (Updated November 2026 - 6.30% buy rate, includes referral SAF recovery)
+        // Each tier applies up to and including maxAmount (financed amount, CAD)
+        rateTiers: [
+            { maxAmount: 9999.99,  rate: 11.75 },  // Under $10,000
+            { maxAmount: 20000,    rate: 10.50 },  // $10,000 - $20,000
+            { maxAmount: 30000,    rate: 10.15 },  // $20,001 - $30,000
+            { maxAmount: 40000,    rate: 9.65 },   // $30,001 - $40,000
+            { maxAmount: 60000,    rate: 9.15 },   // $40,001 - $60,000
+            { maxAmount: 80000,    rate: 8.60 },   // $60,001 - $80,000
+            { maxAmount: 100000,   rate: 8.40 },   // $80,001 - $100,000
+            { maxAmount: 150000,   rate: 8.20 },   // $100,001 - $150,000
+            { maxAmount: 300000,   rate: 7.90 },   // $150,001 - $300,000
+            { maxAmount: Infinity, rate: 7.65 }    // $300,001+
+        ],
         
-        docFee: 298,
+        // Doc fee is charged with the first payment (not financed)
+        docFee: 295,
         purchaseOption: 100      // Lease buyout / residual at end of term - matches medical vertical standard
     };
     // ========== END SETTINGS ==========
@@ -215,14 +220,8 @@
     }
     
     function getRate(amount) {
-        if (amount < 10000)  return SETTINGS.rateTier1;
-        if (amount < 20000)  return SETTINGS.rateTier2;
-        if (amount < 30000)  return SETTINGS.rateTier3;
-        if (amount < 50000)  return SETTINGS.rateTier4;
-        if (amount < 100000) return SETTINGS.rateTier5;
-        if (amount < 200000) return SETTINGS.rateTier6;
-        if (amount < 300000) return SETTINGS.rateTier7;
-        return SETTINGS.rateTier8;
+        const tier = SETTINGS.rateTiers.find(t => amount <= t.maxAmount);
+        return tier.rate;
     }
     
     function calculateMonthlyPayment(principal, annualRate, months) {
@@ -444,9 +443,9 @@
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">
-                                    <span data-translate="customerPhone">Customer Phone</span> <span class="text-red-600">*</span>
+                                    <span data-translate="customerPhone">Customer Phone</span> <span class="text-gray-400 text-xs font-normal">(optional)</span>
                                 </label>
-                                <input type="tel" id="customerPhone" required class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-400" placeholder="e.g. 604-555-0100">
+                                <input type="tel" id="customerPhone" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-400" placeholder="e.g. 604-555-0100">
                             </div>
                         </div>
 
@@ -643,7 +642,7 @@
     function displayQuote() {
         const { equipmentCost, hasWarranty, warrantyCost, selectedTerms, paymentSchedule } = quoteData;
         const totalEquipmentCost = equipmentCost + (hasWarranty ? warrantyCost : 0);
-        const totalFinanced = totalEquipmentCost + SETTINGS.docFee; // Doc fee is rolled into the financed amount at Sonoma
+        const totalFinanced = totalEquipmentCost; // Doc fee charged with first payment, not financed
         const rate = getRate(totalFinanced);
         
         let html = `
@@ -833,8 +832,11 @@ ${repEmail}`;
         pdf.setTextColor(0, 0, 0);
         pdf.text(`${currentLang === 'fr' ? 'Courriel' : 'Email'}: ${quoteData.customerEmail}`, 15, yPos);
         yPos += 5;
-        pdf.text(`${currentLang === 'fr' ? 'Téléphone' : 'Phone'}: ${quoteData.customerPhone}`, 15, yPos);
-        yPos += 10;
+        if (quoteData.customerPhone && quoteData.customerPhone.trim()) {
+            pdf.text(`${currentLang === 'fr' ? 'Téléphone' : 'Phone'}: ${quoteData.customerPhone}`, 15, yPos);
+            yPos += 5;
+        }
+        yPos += 5;
         
         // Equipment Details
         pdf.setFontSize(12);
@@ -870,7 +872,7 @@ ${repEmail}`;
         yPos += 12;
         
         // Payment table
-        const totalFinanced = quoteData.equipmentCost + (quoteData.warrantyCost || 0) + SETTINGS.docFee; // Doc fee is rolled into the financed amount at Sonoma
+        const totalFinanced = quoteData.equipmentCost + (quoteData.warrantyCost || 0); // Doc fee not financed
         const rate = getRate(totalFinanced);
         
         pdf.setFontSize(12);
@@ -879,89 +881,63 @@ ${repEmail}`;
         pdf.text(currentLang === 'fr' ? 'Options de paiement' : 'Payment Options', 15, yPos);
         yPos += 10;
         
-        // Table header
+        // Table: header and rows share the same column centres
+        const sched = quoteData.paymentSchedule;
+        const cols = [];
+        if (sched === 'both' || sched === 'regular')    cols.push({ key: 'regular',    label: 'Standard' });
+        if (sched === 'both' || sched === 'deferred')   cols.push({ key: 'deferred',   label: currentLang === 'fr' ? 'Sauter 2 paiements' : 'Skip 2 Payments' });
+        if (sched === 'both' || sched === 'deferred90') cols.push({ key: 'deferred90', label: currentLang === 'fr' ? 'Sauter 3 paiements' : 'Skip 3 Payments' });
+
+        const termCenter = 35;              // Term column: 15mm - 55mm
+        const colStart = 55;                // Payment columns: 55mm - 195mm
+        const colW = 140 / cols.length;
+        const colCenter = (i) => colStart + colW * (i + 0.5);
+
+        // Header row
         pdf.setFillColor(...sonomaTeal);
-        pdf.rect(15, yPos - 5, 180, 7, 'F');
+        pdf.rect(15, yPos - 5, 180, 8, 'F');
         pdf.setTextColor(255, 255, 255);
-        pdf.setFontSize(10);
+        pdf.setFontSize(8);
         setF('bold');
-        pdf.text(currentLang === 'fr' ? 'Terme' : 'Term', 20, yPos);
-        
-        // Adjust column width based on number of columns
-        const colWidth = (quoteData.paymentSchedule === 'both') ? 53 : 70;
-        let colPos = 65;
-        
-        if (quoteData.paymentSchedule === 'both' || quoteData.paymentSchedule === 'regular') {
-            pdf.text('Standard', colPos, yPos);
-            if (quoteData.paymentSchedule === 'both') colPos += colWidth;
-        }
-        if (quoteData.paymentSchedule === 'both' || quoteData.paymentSchedule === 'deferred') {
-            pdf.text(currentLang === 'fr' ? 'Sauter 2 pmt.' : 'Skip 2 Payments', (quoteData.paymentSchedule === 'both' ? colPos : 125), yPos);
-            if (quoteData.paymentSchedule === 'both') colPos += colWidth;
-        }
-        if (quoteData.paymentSchedule === 'both' || quoteData.paymentSchedule === 'deferred90') {
-            pdf.text(currentLang === 'fr' ? 'Sauter 3 pmt.' : 'Skip 3 Payments', (quoteData.paymentSchedule === 'both' ? colPos : 125), yPos);
-        }
-        
+        pdf.text(currentLang === 'fr' ? 'Terme' : 'Term', termCenter, yPos, { align: 'center' });
+        cols.forEach((c, i) => pdf.text(c.label, colCenter(i), yPos, { align: 'center' }));
+
         yPos += 8;
         pdf.setTextColor(0, 0, 0);
         setF('normal');
-        
+
+        // Data rows
         quoteData.selectedTerms.forEach((term, index) => {
-            const regularPayment = calculateMonthlyPayment(totalFinanced, rate, term);
-            const deferredPayment = calculateDeferredPayment(totalFinanced, rate, term);
-            const deferred90Payment = calculateDeferred90Payment(totalFinanced, rate, term);
-            
+            const results = {
+                regular:    { pay: calculateMonthlyPayment(totalFinanced, rate, term), n: term, highlight: false },
+                deferred:   (() => { const d = calculateDeferredPayment(totalFinanced, rate, term);   return { pay: d.regularPayment, n: d.numberOfRegularPayments, highlight: true }; })(),
+                deferred90: (() => { const d = calculateDeferred90Payment(totalFinanced, rate, term); return { pay: d.regularPayment, n: d.numberOfRegularPayments, highlight: true }; })()
+            };
+
             if (index % 2 === 0) {
                 pdf.setFillColor(245, 245, 245);
-                pdf.rect(15, yPos - 5, 180, 7, 'F');
+                pdf.rect(15, yPos - 5, 180, 9, 'F');
             }
-            
-            const colWidth = (quoteData.paymentSchedule === 'both') ? 43 : 130;
-            let colPos = 65;
-            const fontSize = (quoteData.paymentSchedule === 'both') ? 8 : 9;
-            const subFontSize = (quoteData.paymentSchedule === 'both') ? 7 : 7.5;
-            pdf.setFontSize(fontSize);
-            // Term column - centered in 15-65 range
-            pdf.text(`${term} ${currentLang === 'fr' ? 'mois' : 'months'}`, 40, yPos, { align: 'center' });
 
-            if (quoteData.paymentSchedule === 'both' || quoteData.paymentSchedule === 'regular') {
-                const center = colPos + colWidth / 2;
-                pdf.setFontSize(fontSize);
-                pdf.text(formatCurrency(regularPayment) + (currentLang === 'fr' ? ' + taxes' : ' + tax'), center, yPos, { align: 'center' });
-                pdf.setFontSize(subFontSize);
-                pdf.setTextColor(120,120,120);
-                pdf.text(currentLang === 'fr' ? `${term} paiements` : `${term} payments`, center, yPos + 4, { align: 'center' });
-                pdf.setTextColor(0,0,0);
-                pdf.setFontSize(fontSize);
-                if (quoteData.paymentSchedule === 'both') colPos += colWidth;
-            }
-            if (quoteData.paymentSchedule === 'both' || quoteData.paymentSchedule === 'deferred') {
-                const center = (quoteData.paymentSchedule === 'both') ? colPos + colWidth / 2 : 160;
-                setF('bold');
-                pdf.setTextColor(24, 154, 214);
-                pdf.text(formatCurrency(deferredPayment.regularPayment) + (currentLang === 'fr' ? ' + taxes' : ' + tax'), center, yPos, { align: 'center' });
+            pdf.setFontSize(8.5);
+            setF('normal');
+            pdf.setTextColor(0, 0, 0);
+            pdf.text(`${term} ${currentLang === 'fr' ? 'mois' : 'months'}`, termCenter, yPos, { align: 'center' });
+
+            cols.forEach((c, i) => {
+                const r = results[c.key];
+                const x = colCenter(i);
+                setF(r.highlight ? 'bold' : 'normal');
+                pdf.setFontSize(8.5);
+                if (r.highlight) pdf.setTextColor(24, 154, 214); else pdf.setTextColor(0, 0, 0);
+                pdf.text(formatCurrency(r.pay) + (currentLang === 'fr' ? ' + taxes' : ' + tax'), x, yPos, { align: 'center' });
                 setF('normal');
-                pdf.setTextColor(120,120,120);
-                pdf.setFontSize(subFontSize);
-                pdf.text(currentLang === 'fr' ? `${deferredPayment.numberOfRegularPayments} paiements` : `${deferredPayment.numberOfRegularPayments} payments`, center, yPos + 4, { align: 'center' });
-                pdf.setTextColor(0,0,0);
-                pdf.setFontSize(fontSize);
-                if (quoteData.paymentSchedule === 'both') colPos += colWidth;
-            }
-            if (quoteData.paymentSchedule === 'both' || quoteData.paymentSchedule === 'deferred90') {
-                const center = (quoteData.paymentSchedule === 'both') ? colPos + colWidth / 2 : 160;
-                setF('bold');
-                pdf.setTextColor(24, 154, 214);
-                pdf.text(formatCurrency(deferred90Payment.regularPayment) + (currentLang === 'fr' ? ' + taxes' : ' + tax'), center, yPos, { align: 'center' });
-                setF('normal');
-                pdf.setTextColor(120,120,120);
-                pdf.setFontSize(subFontSize);
-                pdf.text(currentLang === 'fr' ? `${deferred90Payment.numberOfRegularPayments} paiements` : `${deferred90Payment.numberOfRegularPayments} payments`, center, yPos + 4, { align: 'center' });
-                pdf.setTextColor(0,0,0);
-                pdf.setFontSize(fontSize);
-            }
-            
+                pdf.setFontSize(7);
+                pdf.setTextColor(120, 120, 120);
+                pdf.text(currentLang === 'fr' ? `${r.n} paiements` : `${r.n} payments`, x, yPos + 3.5, { align: 'center' });
+            });
+            pdf.setTextColor(0, 0, 0);
+
             yPos += 10;
         });
 
@@ -969,12 +945,20 @@ ${repEmail}`;
         
         yPos += 3;
 
-        // Lease Buyout - directly below table
-        setF('normal');
-        pdf.setFontSize(9);
-        pdf.setTextColor(0, 0, 0);
-        pdf.text('Lease Buyout: $100.00', 15, yPos);
-        yPos += 5;
+        // Lease buyout and administration fee - same style as the disclaimers below
+        pdf.setFontSize(7.5);
+        setF('italic');
+        pdf.setTextColor(100, 100, 100);
+        const feeLines = currentLang === 'fr' ? [
+            'Rachat de location : ' + formatCurrency(SETTINGS.purchaseOption) + ', payable à la fin du terme.',
+            'Frais d\'administration : ' + formatCurrency(SETTINGS.docFee) + ', facturés avec le premier paiement ou, si vous préférez, ajoutés à votre financement.'
+        ] : [
+            'Lease buyout: ' + formatCurrency(SETTINGS.purchaseOption) + ', payable at end of term.',
+            'Administration fee: ' + formatCurrency(SETTINGS.docFee) + ', charged with the first payment or, if you prefer, added to your financing.'
+        ];
+        feeLines.forEach(line => {
+            pdf.splitTextToSize(line, 180).forEach(l => { pdf.text(l, 15, yPos); yPos += 4; });
+        });
 
         // Disclaimers in light grey italic
         pdf.setFontSize(7.5);
