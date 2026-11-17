@@ -28,7 +28,8 @@
         // Each tier applies up to and including maxAmount (financed amount, CAD)
         rateTiers: [
             { maxAmount: 9999.99,  rate: 11.75 },  // Under $10,000
-            { maxAmount: 20000,    rate: 10.50 },  // $10,000 - $20,000
+            { maxAmount: 15000,    rate: 11.25 },  // $10,000 - $15,000
+            { maxAmount: 20000,    rate: 10.75 },  // $15,001 - $20,000
             { maxAmount: 30000,    rate: 10.15 },  // $20,001 - $30,000
             { maxAmount: 40000,    rate: 9.65 },   // $30,001 - $40,000
             { maxAmount: 60000,    rate: 9.15 },   // $40,001 - $60,000
@@ -38,9 +39,29 @@
             { maxAmount: 300000,   rate: 7.90 },   // $150,001 - $300,000
             { maxAmount: Infinity, rate: 7.65 }    // $300,001+
         ],
+
+        // Commercial terms (IR2: owner/guarantor is not a DVM or MD) - 7.20% buy rate
+        // Wider markup on small deals (+2.00 / +1.50 / +1.00), then +0.90% from $20K up
+        rateTiersIR2: [
+            { maxAmount: 9999.99,  rate: 13.75 },  // Under $10,000
+            { maxAmount: 15000,    rate: 12.75 },  // $10,000 - $15,000
+            { maxAmount: 20000,    rate: 11.75 },  // $15,001 - $20,000
+            { maxAmount: 30000,    rate: 11.05 },  // $20,001 - $30,000
+            { maxAmount: 40000,    rate: 10.55 },  // $30,001 - $40,000
+            { maxAmount: 60000,    rate: 10.05 },  // $40,001 - $60,000
+            { maxAmount: 80000,    rate: 9.50 },   // $60,001 - $80,000
+            { maxAmount: 100000,   rate: 9.30 },   // $80,001 - $100,000
+            { maxAmount: 150000,   rate: 9.10 },   // $100,001 - $150,000
+            { maxAmount: 300000,   rate: 8.80 },   // $150,001 - $300,000
+            { maxAmount: Infinity, rate: 8.55 }    // $300,001+
+        ],
         
-        // Doc fee is charged with the first payment (not financed)
-        docFee: 295,
+        // Doc fee is charged with the first payment (not financed). Tiered by financed amount.
+        docFeeTiers: [
+            { maxAmount: 24999.99, fee: 295 },   // Under $25,000
+            { maxAmount: 49999.99, fee: 350 },   // $25,000 - $49,999
+            { maxAmount: Infinity, fee: 400 }    // $50,000+
+        ],
         purchaseOption: 100      // Lease buyout / residual at end of term - matches medical vertical standard
     };
     // ========== END SETTINGS ==========
@@ -70,6 +91,11 @@
             customerContactName: "Customer Contact Name",
             customerContactEmail: "Customer Contact Email",
             customerPhone: "Customer Phone",
+            pricingType: "Pricing Terms",
+            pricingDVM: "DVM Terms",
+            pricingDVMHint: "Owner or guarantor is a veterinarian or medical doctor",
+            pricingCommercial: "Commercial Terms",
+            pricingCommercialHint: "All other business owners",
             equipmentDescLabel: "Equipment Description",
             equipmentDescPlaceholder: "e.g., Ultrasound System, 2024, GE, LOGIQ E10, SN: 12345678",
             equipmentCost: "Pre-tax Equipment Cost",
@@ -143,6 +169,11 @@
             customerContactName: "Nom du contact client",
             customerContactEmail: "Courriel du contact client",
             customerPhone: "Téléphone du client",
+            pricingType: "Conditions de tarification",
+            pricingDVM: "Conditions DVM",
+            pricingDVMHint: "Le propriétaire ou garant est vétérinaire ou médecin",
+            pricingCommercial: "Conditions commerciales",
+            pricingCommercialHint: "Tous les autres propriétaires d'entreprise",
             equipmentDescLabel: "Description de l'équipement",
             equipmentDescPlaceholder: "p. ex., Système d'échographie, 2024, GE, LOGIQ E10, N/S: 12345678",
             equipmentCost: "Coût de l'équipement (avant taxes)",
@@ -220,10 +251,16 @@
     }
     
     function getRate(amount) {
-        const tier = SETTINGS.rateTiers.find(t => amount <= t.maxAmount);
+        const commercialEl = document.getElementById('pricingCommercial');
+        const tiers = (commercialEl && commercialEl.checked) ? SETTINGS.rateTiersIR2 : SETTINGS.rateTiers;
+        const tier = tiers.find(t => amount <= t.maxAmount);
         return tier.rate;
     }
     
+    function getDocFee(amount) {
+        return SETTINGS.docFeeTiers.find(t => amount <= t.maxAmount).fee;
+    }
+
     function calculateMonthlyPayment(principal, annualRate, months) {
         const monthlyRate = annualRate / 100 / 12;
         const fv = SETTINGS.purchaseOption; // SETTINGS.purchaseOption residual / lease buyout
@@ -425,25 +462,25 @@
                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">
-                                    <span data-translate="customerLegalName">Business Legal Name</span> <span class="text-red-600">*</span>
+                                    <span data-translate="customerLegalName">Business Legal Name</span>
                                 </label>
-                                <input type="text" id="customerName" required class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-400">
+                                <input type="text" id="customerName" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-400">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">
-                                    <span data-translate="customerContactName">Customer Contact Name</span> <span class="text-red-600">*</span>
+                                    <span data-translate="customerContactName">Customer Contact Name</span>
                                 </label>
-                                <input type="text" id="customerContactName" required class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-400">
+                                <input type="text" id="customerContactName" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-400">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">
-                                    <span data-translate="customerContactEmail">Customer Contact Email</span> <span class="text-red-600">*</span>
+                                    <span data-translate="customerContactEmail">Customer Contact Email</span>
                                 </label>
-                                <input type="email" id="customerEmail" required class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-400">
+                                <input type="email" id="customerEmail" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-400">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">
-                                    <span data-translate="customerPhone">Customer Phone</span> <span class="text-gray-400 text-xs font-normal">(optional)</span>
+                                    <span data-translate="customerPhone">Customer Phone</span>
                                 </label>
                                 <input type="tel" id="customerPhone" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-400" placeholder="e.g. 604-555-0100">
                             </div>
@@ -463,6 +500,19 @@
                     <!-- Financing Details -->
                     <div class="mb-8">
                         <h3 class="font-semibold text-lg sonoma-teal border-b-2 border-blue-200 pb-2 mb-4" data-translate="financingDetails">Financing Details</h3>
+                        <div class="mb-6">
+                            <label class="block text-sm font-medium text-gray-700 mb-2" data-translate="pricingType">Pricing Terms</label>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <label class="flex items-start gap-3 p-4 border-2 border-gray-300 rounded-lg hover:border-blue-400 cursor-pointer">
+                                    <input type="radio" name="pricing" id="pricingDVM" value="dvm" checked class="mt-1">
+                                    <span><span class="font-semibold block" data-translate="pricingDVM">DVM Terms</span><span class="text-xs text-gray-500" data-translate="pricingDVMHint">Owner or guarantor is a veterinarian or medical doctor</span></span>
+                                </label>
+                                <label class="flex items-start gap-3 p-4 border-2 border-gray-300 rounded-lg hover:border-blue-400 cursor-pointer">
+                                    <input type="radio" name="pricing" id="pricingCommercial" value="commercial" class="mt-1">
+                                    <span><span class="font-semibold block" data-translate="pricingCommercial">Commercial Terms</span><span class="text-xs text-gray-500" data-translate="pricingCommercialHint">All other business owners</span></span>
+                                </label>
+                            </div>
+                        </div>
                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">
@@ -748,7 +798,7 @@
     function buildEmailClientLink(contactName, clientEmail, repName, repPhone, repEmail) {
         const bccEmail = 'natalia.gallegos@sonomacapital.ca';
         const body =
-`Hi ${contactName},
+`Hi${contactName ? ' ' + contactName : ''},
 
 I have attached your equipment financing quote from Sonoma Capital for your review.
 
@@ -816,27 +866,33 @@ ${repEmail}`;
         pdf.setFontSize(10);
         setF('normal');
         pdf.setTextColor(0, 0, 0);
-        pdf.setFontSize(9);
+        pdf.setFontSize(10);
         setF('normal');
         pdf.setTextColor(0, 0, 0);
-        pdf.text(`${currentLang === 'fr' ? 'Nom légal de l\'entreprise' : 'Business Legal Name'}: ${quoteData.customerName}`, 15, yPos);
-        yPos += 5;
-        pdf.text(`${currentLang === 'fr' ? 'Contact' : 'Contact'}: ${quoteData.customerContactName}`, 15, yPos);
-        yPos += 5;
+        if (quoteData.customerName && quoteData.customerName.trim()) {
+            pdf.text(`${currentLang === 'fr' ? 'Nom légal de l\'entreprise' : 'Business Legal Name'}: ${quoteData.customerName}`, 15, yPos);
+            yPos += 6;
+        }
+        if (quoteData.customerContactName && quoteData.customerContactName.trim()) {
+            pdf.text(`Contact: ${quoteData.customerContactName}`, 15, yPos);
+            yPos += 6;
+        }
         const equipLabel = currentLang === 'fr' ? 'Équipement' : 'Equipment';
         const descLines = pdf.splitTextToSize(`${equipLabel}: ${quoteData.equipmentDescription}`, 180);
         pdf.text(descLines, 15, yPos);
-        yPos += descLines.length * 5;
-        pdf.setFontSize(9);
+        yPos += descLines.length * 6;
+        pdf.setFontSize(10);
         setF('normal');
         pdf.setTextColor(0, 0, 0);
-        pdf.text(`${currentLang === 'fr' ? 'Courriel' : 'Email'}: ${quoteData.customerEmail}`, 15, yPos);
-        yPos += 5;
+        if (quoteData.customerEmail && quoteData.customerEmail.trim()) {
+            pdf.text(`${currentLang === 'fr' ? 'Courriel' : 'Email'}: ${quoteData.customerEmail}`, 15, yPos);
+            yPos += 6;
+        }
         if (quoteData.customerPhone && quoteData.customerPhone.trim()) {
             pdf.text(`${currentLang === 'fr' ? 'Téléphone' : 'Phone'}: ${quoteData.customerPhone}`, 15, yPos);
-            yPos += 5;
+            yPos += 6;
         }
-        yPos += 5;
+        yPos += 6;
         
         // Equipment Details
         pdf.setFontSize(12);
@@ -951,10 +1007,10 @@ ${repEmail}`;
         pdf.setTextColor(100, 100, 100);
         const feeLines = currentLang === 'fr' ? [
             'Rachat de location : ' + formatCurrency(SETTINGS.purchaseOption) + ', payable à la fin du terme.',
-            'Frais d\'administration : ' + formatCurrency(SETTINGS.docFee) + ', facturés avec le premier paiement ou, si vous préférez, ajoutés à votre financement.'
+            'Frais d\'administration : ' + formatCurrency(getDocFee(totalFinanced)) + ', facturés avec le premier paiement ou, si vous préférez, ajoutés à votre financement.'
         ] : [
             'Lease buyout: ' + formatCurrency(SETTINGS.purchaseOption) + ', payable at end of term.',
-            'Administration fee: ' + formatCurrency(SETTINGS.docFee) + ', charged with the first payment or, if you prefer, added to your financing.'
+            'Administration fee: ' + formatCurrency(getDocFee(totalFinanced)) + ', charged with the first payment or, if you prefer, added to your financing.'
         ];
         feeLines.forEach(line => {
             pdf.splitTextToSize(line, 180).forEach(l => { pdf.text(l, 15, yPos); yPos += 4; });
@@ -1004,7 +1060,7 @@ ${repEmail}`;
         yPos += 5;
         pdf.text(quoteData.repEmail, 15, yPos);
         
-        pdf.save(`Vendor_Financing_Quote_${quoteData.customerName.replace(/\s+/g, '_')}.pdf`);
+        pdf.save(`Vendor_Financing_Quote_${(quoteData.customerName || '').trim() ? quoteData.customerName.trim().replace(/\s+/g, '_') : 'Dispomed'}.pdf`);
         } catch(err) {
             console.error('PDF generation error:', err);
             alert('PDF generation failed: ' + err.message);
