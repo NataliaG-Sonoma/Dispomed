@@ -24,38 +24,43 @@
         // Quote validity
         quoteValidDays: 30,  // Quote expires after 30 days
         
-        // Rates (Updated November 2026 - 6.30% buy rate, includes referral SAF recovery)
-        // Each tier applies up to and including maxAmount (financed amount, CAD)
+        // Dispomed rate card effective Feb 1, 2027 (6.30% buy rate). Each tier applies up to and including maxAmount.
+        // Base rates apply to 60-72 month terms; shorter terms add termAdjustments below.
+        // Deals up to $20K keep the Nov 2026 rates; above $20K aligned with the Medna structure.
+        // DVM terms
         rateTiers: [
             { maxAmount: 9999.99,  rate: 11.75 },  // Under $10,000
             { maxAmount: 15000,    rate: 11.25 },  // $10,000 - $15,000
             { maxAmount: 20000,    rate: 10.75 },  // $15,001 - $20,000
-            { maxAmount: 30000,    rate: 10.15 },  // $20,001 - $30,000
-            { maxAmount: 40000,    rate: 9.65 },   // $30,001 - $40,000
+            { maxAmount: 30000,    rate: 9.75 },   // $20,001 - $30,000
+            { maxAmount: 40000,    rate: 9.45 },   // $30,001 - $40,000
             { maxAmount: 60000,    rate: 9.15 },   // $40,001 - $60,000
-            { maxAmount: 80000,    rate: 8.60 },   // $60,001 - $80,000
-            { maxAmount: 100000,   rate: 8.40 },   // $80,001 - $100,000
-            { maxAmount: 150000,   rate: 8.20 },   // $100,001 - $150,000
-            { maxAmount: 300000,   rate: 7.90 },   // $150,001 - $300,000
-            { maxAmount: Infinity, rate: 7.65 }    // $300,001+
+            { maxAmount: 80000,    rate: 8.75 },   // $60,001 - $80,000
+            { maxAmount: 100000,   rate: 8.50 },   // $80,001 - $100,000
+            { maxAmount: 150000,   rate: 8.25 },   // $100,001 - $150,000
+            { maxAmount: 300000,   rate: 8.00 },   // $150,001 - $300,000
+            { maxAmount: Infinity, rate: 7.75 }    // $300,001+
         ],
 
         // Commercial terms (IR2: owner/guarantor is not a DVM or MD) - 7.20% buy rate
-        // Wider markup on small deals (+2.00 / +1.50 / +1.00), then +0.90% from $20K up
+        // +2.00 / +1.50 / +1.00 on deals up to $20K, then +0.90% on every tier
         rateTiersIR2: [
-            { maxAmount: 9999.99,  rate: 13.75 },  // Under $10,000
-            { maxAmount: 15000,    rate: 12.75 },  // $10,000 - $15,000
-            { maxAmount: 20000,    rate: 11.75 },  // $15,001 - $20,000
-            { maxAmount: 30000,    rate: 11.05 },  // $20,001 - $30,000
-            { maxAmount: 40000,    rate: 10.55 },  // $30,001 - $40,000
-            { maxAmount: 60000,    rate: 10.05 },  // $40,001 - $60,000
-            { maxAmount: 80000,    rate: 9.50 },   // $60,001 - $80,000
-            { maxAmount: 100000,   rate: 9.30 },   // $80,001 - $100,000
-            { maxAmount: 150000,   rate: 9.10 },   // $100,001 - $150,000
-            { maxAmount: 300000,   rate: 8.80 },   // $150,001 - $300,000
-            { maxAmount: Infinity, rate: 8.55 }    // $300,001+
+            { maxAmount: 9999.99,  rate: 13.75 },
+            { maxAmount: 15000,    rate: 12.75 },
+            { maxAmount: 20000,    rate: 11.75 },
+            { maxAmount: 30000,    rate: 10.65 },
+            { maxAmount: 40000,    rate: 10.35 },
+            { maxAmount: 60000,    rate: 10.05 },
+            { maxAmount: 80000,    rate: 9.65 },
+            { maxAmount: 100000,   rate: 9.40 },
+            { maxAmount: 150000,   rate: 9.15 },
+            { maxAmount: 300000,   rate: 8.90 },
+            { maxAmount: Infinity, rate: 8.65 }
         ],
-        
+
+        // Term adjustment added to the tier rate
+        termAdjustments: { 24: 0.50, 36: 0.50, 48: 0.25, 60: 0, 72: 0 },
+
         // Doc fee is charged with the first payment (not financed). Tiered by financed amount.
         docFeeTiers: [
             { maxAmount: 24999.99, fee: 295 },   // Under $25,000
@@ -250,11 +255,11 @@
         });
     }
     
-    function getRate(amount) {
+    function getRate(amount, term) {
         const commercialEl = document.getElementById('pricingCommercial');
         const tiers = (commercialEl && commercialEl.checked) ? SETTINGS.rateTiersIR2 : SETTINGS.rateTiers;
         const tier = tiers.find(t => amount <= t.maxAmount);
-        return tier.rate;
+        return tier.rate + (SETTINGS.termAdjustments[term] || 0);
     }
     
     function getDocFee(amount) {
@@ -518,7 +523,7 @@
                                 <label class="block text-sm font-medium text-gray-700 mb-2">
                                     <span data-translate="equipmentCost">Pre-tax Equipment Cost</span> <span class="text-red-600">*</span>
                                 </label>
-                                <input type="number" id="equipmentCost" required min="1" step="1" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-400" placeholder="50000">
+                                <input type="number" id="equipmentCost" required min="1" step="0.01" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-400" placeholder="50000">
                                 <p class="text-xs text-gray-500 mt-1"></p>
                             </div>
                             <div>
@@ -693,7 +698,6 @@
         const { equipmentCost, hasWarranty, warrantyCost, selectedTerms, paymentSchedule } = quoteData;
         const totalEquipmentCost = equipmentCost + (hasWarranty ? warrantyCost : 0);
         const totalFinanced = totalEquipmentCost; // Doc fee charged with first payment, not financed
-        const rate = getRate(totalFinanced);
         
         let html = `
             <div class="mb-6">
@@ -748,9 +752,9 @@
                         <tbody>`;
         
         selectedTerms.forEach((term, index) => {
-            const regularPayment = calculateMonthlyPayment(totalFinanced, rate, term);
-            const deferredPayment = calculateDeferredPayment(totalFinanced, rate, term);
-            const deferred90Payment = calculateDeferred90Payment(totalFinanced, rate, term);
+            const regularPayment = calculateMonthlyPayment(totalFinanced, getRate(totalFinanced, term), term);
+            const deferredPayment = calculateDeferredPayment(totalFinanced, getRate(totalFinanced, term), term);
+            const deferred90Payment = calculateDeferred90Payment(totalFinanced, getRate(totalFinanced, term), term);
             
             html += `
                             <tr class="${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}">
@@ -929,7 +933,6 @@ ${repEmail}`;
         
         // Payment table
         const totalFinanced = quoteData.equipmentCost + (quoteData.warrantyCost || 0); // Doc fee not financed
-        const rate = getRate(totalFinanced);
         
         pdf.setFontSize(12);
         setF('bold');
@@ -965,9 +968,9 @@ ${repEmail}`;
         // Data rows
         quoteData.selectedTerms.forEach((term, index) => {
             const results = {
-                regular:    { pay: calculateMonthlyPayment(totalFinanced, rate, term), n: term, highlight: false },
-                deferred:   (() => { const d = calculateDeferredPayment(totalFinanced, rate, term);   return { pay: d.regularPayment, n: d.numberOfRegularPayments, highlight: true }; })(),
-                deferred90: (() => { const d = calculateDeferred90Payment(totalFinanced, rate, term); return { pay: d.regularPayment, n: d.numberOfRegularPayments, highlight: true }; })()
+                regular:    { pay: calculateMonthlyPayment(totalFinanced, getRate(totalFinanced, term), term), n: term, highlight: false },
+                deferred:   (() => { const d = calculateDeferredPayment(totalFinanced, getRate(totalFinanced, term), term);   return { pay: d.regularPayment, n: d.numberOfRegularPayments, highlight: true }; })(),
+                deferred90: (() => { const d = calculateDeferred90Payment(totalFinanced, getRate(totalFinanced, term), term); return { pay: d.regularPayment, n: d.numberOfRegularPayments, highlight: true }; })()
             };
 
             if (index % 2 === 0) {
